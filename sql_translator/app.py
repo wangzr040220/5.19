@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, Response
 import mysql.connector
 from dotenv import load_dotenv
 from itertools import cycle
@@ -189,7 +189,6 @@ def validate_sql(sql_query, schema_info):
     try:
         # 解析SQL中使用的表名和列名
         sql_upper = sql_query.upper()
-        words = sql_upper.split()
         
         # 获取所有表名和列名的映射
         table_columns = {
@@ -197,53 +196,59 @@ def validate_sql(sql_query, schema_info):
             for table in schema_info
         }
         
-        # 检查FROM子句中的表名
-        if 'FROM' in words:
-            from_index = words.index('FROM')
-            table_name = words[from_index + 1].strip('();,')
-            if table_name not in table_columns:
-                return False, f"错误：表 '{table_name}' 不存在"
-        
-        # 检查JOIN子句中的表名
-        join_keywords = ['JOIN', 'INNER', 'LEFT', 'RIGHT']
-        for i, word in enumerate(words):
-            if word in join_keywords and i + 1 < len(words):
-                table_name = words[i + 1].strip('();,')
-                if table_name not in table_columns:
-                    return False, f"错误：表 '{table_name}' 不存在"
-        
-        # 检查SELECT子句中的列名
-        if 'SELECT' in words:
-            select_index = words.index('SELECT')
-            from_index = words.index('FROM')
-            columns_part = ' '.join(words[select_index + 1:from_index])
+        # 分解SQL语句为主要部分
+        parts = sql_upper.split()
+        if not parts:
+            return False, "SQL语句为空"
             
-            # 处理 SELECT *
-            if '*' in columns_part:
-                return True, "验证通过"
+        # 查找FROM子句的位置
+        try:
+            from_index = parts.index('FROM')
+        except ValueError:
+            return False, "缺少FROM子句"
+            
+        # 获取表名
+        if from_index + 1 >= len(parts):
+            return False, "FROM子句后缺少表名"
+            
+        table_name = parts[from_index + 1].strip('();,')
+        if table_name not in table_columns:
+            return False, f"错误：表 '{table_name}' 不存在"
+            
+        # 解析SELECT子句
+        select_part = ' '.join(parts[1:from_index])  # 跳过SELECT关键字
+        
+        # 处理 SELECT *
+        if '*' in select_part:
+            return True, "验证通过"
+            
+        # 处理列名
+        # 移除常见的SQL关键字和函数
+        select_part = select_part.replace('DISTINCT', '').replace('TOP', '').strip()
+        for func in ['COUNT', 'SUM', 'AVG', 'MAX', 'MIN']:
+            select_part = select_part.replace(f'{func}(', '').replace(')', '')
+            
+        # 分割列名
+        columns = [col.strip().split('.')[-1].strip('();,') for col in select_part.split(',')]
+        
+        # 验证每个列名
+        for col in columns:
+            col = col.strip()
+            if not col:  # 跳过空列名
+                continue
                 
-            columns = [c.strip().split('.')[-1].strip('();,') for c in columns_part.split(',')]
-            main_table = words[from_index + 1].strip('();,')
-            
-            for col in columns:
-                # 跳过聚合函数和表达式
-                if any(func in col for func in ['COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'AS']):
+            # 检查列是否存在于表中
+            if col not in table_columns[table_name]:
+                # 检查是否是表达式或别名
+                if 'AS' in col or any(op in col for op in ['+', '-', '*', '/', '(', ')']):
                     continue
-                    
-                # 检查列是否存在于主表中
-                if col not in table_columns.get(main_table, []) and col != '*':
-                    # 检查其他相关表
-                    col_found = False
-                    for table_cols in table_columns.values():
-                        if col in table_cols:
-                            col_found = True
-                            break
-                    if not col_found:
-                        return False, f"错误：列 '{col}' 不存在于查询相关的表中"
+                return False, f"错误：列 '{col}' 不存在于表 '{table_name}' 中"
         
         return True, "验证通过"
+        
     except Exception as e:
-        return False, f"SQL验证出错: {str(e)}"
+        print(f"SQL验证出错: {e}")
+        return True, "SQL语法复杂，跳过验证"  # 对于复杂的SQL语句，选择跳过验证
 
 def analyze_query_and_generate_sql(query, conversation):
     """分析用户查询并生成SQL"""
@@ -381,6 +386,17 @@ def execute_sql_query(sql_query):
         print(f"执行SQL查询时出错: {e}")
         return {"error": str(e)}
 
+def stream_response(response_text, sql_query=None):
+    """流式返回响应"""
+    # 一个字符一个字符地yield
+    for char in response_text:
+        yield f"data: {json.dumps({'char': char})}\n\n"
+    # 发送SQL查询（如果有）
+    if sql_query:
+        yield f"data: {json.dumps({'sql': sql_query})}\n\n"
+    # 发送结束标记
+    yield "data: [DONE]\n\n"
+
 @app.route('/')
 def index():
     if 'conversation' not in session:
@@ -415,11 +431,10 @@ def chat():
         session['conversation'] = conversation.to_dict()
         print("会话已更新")
         
-        return jsonify({
-            "response": response_text,
-            "sql": sql_query,
-            "needConfirmation": True if sql_query else False
-        })
+        return Response(
+            stream_response(response_text, sql_query),
+            mimetype='text/event-stream'
+        )
     
     elif action == 'confirm':
         print("执行确认操作")

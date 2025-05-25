@@ -53,26 +53,53 @@ document.addEventListener('DOMContentLoaded', function() {
                 }),
             });
 
-            const data = await response.json();
-            
-            if (data.error) {
-                showError(data.error);
-                return;
-            }
+            // 创建一个新的助手消息元素
+            const assistantMessageComponents = createAssistantMessage();
+            messageList.appendChild(assistantMessageComponents.element);
+            let displayText = '';
 
-            const assistantMessage = createAssistantMessage(data.response, data.sql);
-            messageList.appendChild(assistantMessage);
-            scrollToBottom();
+            // 创建 EventSource 读取流式响应
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
 
-            // 等待打字机效果完成
-            await new Promise(resolve => {
-                const checkGeneration = setInterval(() => {
-                    if (!currentGeneration) {
-                        clearInterval(checkGeneration);
-                        resolve();
+            while (true) {
+                const {value, done} = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(5);
+                        if (data === '[DONE]') {
+                            break;
+                        }
+                        
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.char) {
+                                displayText += parsed.char;
+                                assistantMessageComponents.textDiv.innerHTML = marked.parse(displayText);
+                                scrollToBottom();
+                            } else if (parsed.sql) {
+                                const sqlCode = assistantMessageComponents.sqlSection.querySelector('.sql-query code');
+                                sqlCode.textContent = parsed.sql;
+                                assistantMessageComponents.sqlSection.style.display = 'block';
+                                
+                                // 启用SQL执行按钮
+                                if (assistantMessageComponents.confirmBtn) {
+                                    assistantMessageComponents.confirmBtn.disabled = false;
+                                    assistantMessageComponents.confirmBtn.style.opacity = '1';
+                                    assistantMessageComponents.confirmBtn.title = '执行SQL查询';
+                                }
+                            }
+                        } catch (e) {
+                            console.error('解析响应数据出错:', e);
+                        }
                     }
-                }, 100);
-            });
+                }
+            }
 
         } catch (error) {
             showError('请求失败: ' + error.message);
@@ -151,61 +178,57 @@ document.addEventListener('DOMContentLoaded', function() {
         return template;
     }
 
-    // 添加打字机效果函数
+    // 修改typewriterEffect函数
     async function typewriterEffect(element, text) {
         currentGeneration = { abort: false };
         const currentGen = currentGeneration;
         
-        let displayText = '';
-        const words = text.split('');
-        
-        // 创建一个新的 div 元素用于显示 markdown
         const textDiv = document.createElement('div');
         element.appendChild(textDiv);
+        let displayText = '';
+
+        // 使用更小的时间间隔，让显示更流畅
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         
-        for (const char of words) {
-            if (currentGen.abort) {
-                break;
+        try {
+            for (const char of text) {
+                if (currentGen.abort) break;
+                displayText += char;
+                
+                // 立即渲染当前字符
+                textDiv.innerHTML = marked.parse(displayText);
+                // 添加很小的延迟，让浏览器有时间渲染
+                await delay(10);
             }
-            displayText += char;
-            textDiv.innerHTML = marked.parse(displayText);
-            await new Promise(resolve => setTimeout(resolve, 30));
+        } finally {
+            currentGeneration = null;
+            // 确保最后显示完整文本
+            if (currentGen.abort) {
+                textDiv.innerHTML = marked.parse(text);
+            }
         }
-        
-        currentGeneration = null;
     }
 
     // 修改createAssistantMessage函数
-    function createAssistantMessage(text, sql = null) {
+    function createAssistantMessage(text = '', sql = null) {
         console.log('创建助手消息:', '包含SQL:', !!sql);
         const template = assistantMessageTemplate.content.cloneNode(true);
         const messageText = template.querySelector('.message-text');
-        messageText.innerHTML = '';
+        const textDiv = document.createElement('div');
+        messageText.appendChild(textDiv);
         
         const sqlSection = template.querySelector('.sql-section');
         const confirmBtn = template.querySelector('.confirm-btn');
         
         if (confirmBtn) {
-            // 初始时禁用按钮
             confirmBtn.disabled = true;
             confirmBtn.style.opacity = '0.5';
             confirmBtn.title = '请等待消息生成完成';
         }
-        
-        if (text) {
-            typewriterEffect(messageText, text).then(() => {
-                // 消息生成完成后启用按钮
-                if (confirmBtn) {
-                    confirmBtn.disabled = false;
-                    confirmBtn.style.opacity = '1';
-                    confirmBtn.title = '执行SQL查询';
-                }
-            });
-        }
 
         if (sql) {
             console.log('添加SQL部分');
-            const sqlCode = template.querySelector('.sql-query code');
+            const sqlCode = sqlSection.querySelector('.sql-query code');
             sqlCode.textContent = sql;
             sqlSection.style.display = 'block';
             
@@ -222,7 +245,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        return template;
+        return {
+            element: template,
+            textDiv: textDiv,
+            sqlSection: sqlSection,
+            confirmBtn: confirmBtn
+        };
     }
 
     // 修改显示错误消息函数
