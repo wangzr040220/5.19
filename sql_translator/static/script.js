@@ -13,15 +13,28 @@ document.addEventListener('DOMContentLoaded', function() {
     function abortGeneration() {
         if (currentGeneration) {
             currentGeneration.abort = true;
+            // 移除最后一条助手消息
+            const lastMessage = messageList.lastElementChild;
+            if (lastMessage && lastMessage.classList.contains('assistant-message')) {
+                messageList.removeChild(lastMessage);
+            }
+            setButtonLoading(sendBtn, false);
+            sendBtn.onclick = sendMessage;
+            userInput.disabled = false;
+            isProcessing = false;
         }
     }
 
     // 更新按钮状态为加载中
     function setButtonLoading(button, isLoading, text = '正在生成...') {
         if (isLoading) {
+            button.classList.add('loading');
             button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text} <span class="abort-text">(点击终止)</span>`;
+            currentGeneration = { abort: false };
         } else {
+            button.classList.remove('loading');
             button.innerHTML = `<i class="fas fa-paper-plane"></i> 发送`;
+            currentGeneration = null;
         }
     }
 
@@ -41,6 +54,11 @@ document.addEventListener('DOMContentLoaded', function() {
         messageList.appendChild(userMessage);
         scrollToBottom();
 
+        // 创建一个新的助手消息元素
+        const assistantMessageComponents = createAssistantMessage();
+        messageList.appendChild(assistantMessageComponents.element);
+        let displayText = '';
+
         try {
             const response = await fetch('/chat', {
                 method: 'POST',
@@ -53,16 +71,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }),
             });
 
-            // 创建一个新的助手消息元素
-            const assistantMessageComponents = createAssistantMessage();
-            messageList.appendChild(assistantMessageComponents.element);
-            let displayText = '';
-
             // 创建 EventSource 读取流式响应
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
             while (true) {
+                if (currentGeneration && currentGeneration.abort) {
+                    reader.cancel();
+                    break;
+                }
+
                 const {value, done} = await reader.read();
                 if (done) break;
                 
@@ -70,19 +88,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 const lines = chunk.split('\n');
                 
                 for (const line of lines) {
+                    // 如果已经终止，不再处理新的数据
+                    if (currentGeneration && currentGeneration.abort) {
+                        break;
+                    }
+
                     if (line.startsWith('data: ')) {
-                        const data = line.slice(5);
+                        const data = line.slice(5).trim();
+                        
+                        // 检查是否是结束标记
                         if (data === '[DONE]') {
-                            break;
+                            console.log('收到结束标记');
+                            continue;
                         }
                         
+                        // 尝试解析JSON数据
                         try {
                             const parsed = JSON.parse(data);
-                            if (parsed.char) {
+                            if (parsed.char && !currentGeneration?.abort) {
                                 displayText += parsed.char;
                                 assistantMessageComponents.textDiv.innerHTML = marked.parse(displayText);
                                 scrollToBottom();
-                            } else if (parsed.sql) {
+                            } else if (parsed.sql && !currentGeneration?.abort) {
                                 const sqlCode = assistantMessageComponents.sqlSection.querySelector('.sql-query code');
                                 sqlCode.textContent = parsed.sql;
                                 assistantMessageComponents.sqlSection.style.display = 'block';
@@ -92,18 +119,36 @@ document.addEventListener('DOMContentLoaded', function() {
                                     assistantMessageComponents.confirmBtn.disabled = false;
                                     assistantMessageComponents.confirmBtn.style.opacity = '1';
                                     assistantMessageComponents.confirmBtn.title = '执行SQL查询';
+                                    
+                                    // 添加点击事件处理
+                                    assistantMessageComponents.confirmBtn.onclick = function(event) {
+                                        if (this.disabled) return;
+                                        console.log('确认按钮被点击');
+                                        const messageElement = event.target.closest('.message-content');
+                                        if (messageElement) {
+                                            this.style.display = 'none';
+                                            executeQuery(messageElement);
+                                        }
+                                    };
                                 }
                             }
                         } catch (e) {
-                            console.error('解析响应数据出错:', e);
+                            if (!currentGeneration?.abort) {
+                                console.error('解析JSON数据出错:', e, '原始数据:', data);
+                            }
+                            continue;
                         }
                     }
                 }
             }
 
         } catch (error) {
-            showError('请求失败: ' + error.message);
+            if (!currentGeneration?.abort) {
+                console.error('请求失败:', error);
+                showError('请求失败: ' + error.message);
+            }
         } finally {
+            currentGeneration = null;
             isProcessing = false;
             userInput.disabled = false;
             setButtonLoading(sendBtn, false);
@@ -113,12 +158,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 执行查询
-    async function executeQuery(messageContent) {
-        if (!messageContent) return;
+    async function executeQuery(messageElement) {
+        if (!messageElement || isProcessing) return;
+        
+        const resultsSection = messageElement.querySelector('.results-section');
+        if (!resultsSection) return;
 
-        const confirmBtn = messageContent.querySelector('.confirm-btn');
-        if (!confirmBtn) return;
-
+        isProcessing = true;
         setButtonLoading(sendBtn, true, '执行查询中...');
         sendBtn.onclick = abortGeneration;
 
@@ -133,40 +179,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 }),
             });
 
-            const data = await response.json();
-            
-            if (data.error) {
-                showError(data.error);
+            if (currentGeneration && currentGeneration.abort) {
+                showError('查询已取消');
                 return;
             }
 
-            const resultsSection = messageContent.querySelector('.results-section');
-            if (resultsSection) {
-                await displayResults(data.results, resultsSection);
-                resultsSection.style.display = 'block';
+            const data = await response.json();
+            
+            if (data.error) {
+                const errorMessageComponents = createAssistantMessage();
+                errorMessageComponents.textDiv.innerHTML = marked.parse(`❌ ${data.error}`);
+                messageList.appendChild(errorMessageComponents.element);
+                scrollToBottom();
+                return;
             }
 
-            if (data.response) {
-                const analysisMessage = createAssistantMessage(data.response);
-                messageList.appendChild(analysisMessage);
-                scrollToBottom();
+            // 显示查询结果
+            if (!currentGeneration?.abort) {
+                await displayResults(data.results, resultsSection);
+                resultsSection.style.display = 'block';
 
-                // 等待打字机效果完成
-                await new Promise(resolve => {
-                    const checkGeneration = setInterval(() => {
-                        if (!currentGeneration) {
-                            clearInterval(checkGeneration);
-                            resolve();
-                        }
-                    }, 100);
-                });
+                // 显示分析结果
+                if (data.response) {
+                    const analysisMessageComponents = createAssistantMessage();
+                    analysisMessageComponents.textDiv.innerHTML = marked.parse(data.response);
+                    messageList.appendChild(analysisMessageComponents.element);
+                    scrollToBottom();
+                }
             }
 
         } catch (error) {
-            showError('执行查询失败: ' + error.message);
+            if (!currentGeneration?.abort) {
+                console.error('执行查询失败:', error);
+                const errorMessageComponents = createAssistantMessage();
+                errorMessageComponents.textDiv.innerHTML = marked.parse(`❌ 执行查询失败: ${error.message}`);
+                messageList.appendChild(errorMessageComponents.element);
+                scrollToBottom();
+            }
         } finally {
+            currentGeneration = null;
+            isProcessing = false;
             setButtonLoading(sendBtn, false);
             sendBtn.onclick = sendMessage;
+            userInput.focus();
         }
     }
 
@@ -255,12 +310,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 修改显示错误消息函数
     function showError(message) {
-        const errorMessage = createAssistantMessage(`❌ ${message}`);
-        messageList.appendChild(errorMessage);
+        const errorMessageComponents = createAssistantMessage();
+        errorMessageComponents.textDiv.innerHTML = marked.parse(`❌ ${message}`);
+        messageList.appendChild(errorMessageComponents.element);
         scrollToBottom();
     }
 
-    // 修改displayResults函数，添加逐行显示效果
+    // 修改displayResults函数
     async function displayResults(results, container) {
         if (!results || results.length === 0) {
             container.innerHTML = '<div class="alert alert-info">查询执行成功，但没有返回任何结果。</div>';
@@ -292,7 +348,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 tr.appendChild(td);
             }
             tbody.appendChild(tr);
-            await new Promise(resolve => setTimeout(resolve, 100)); // 每行显示的延迟
+            await new Promise(resolve => setTimeout(resolve, 50)); // 减少每行显示的延迟
         }
     }
 
