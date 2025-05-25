@@ -19,7 +19,7 @@ mysql_config = {
     'host': os.getenv('MYSQL_HOST', 'localhost'),
     'user': os.getenv('MYSQL_USER', 'root'),
     'password': os.getenv('MYSQL_PASSWORD', 'wangzr040220'),
-    'database': os.getenv('MYSQL_DATABASE', '5.18')
+    'database': os.getenv('MYSQL_DATABASE', 'Final_Project')
 }
 
 # API密钥池
@@ -164,26 +164,35 @@ def get_database_schema():
         schema_info = []
         for table in tables:
             table_name = table[0]
-            cursor.execute(f"DESCRIBE {table_name}")
-            columns = cursor.fetchall()
-            
-            column_info = []
-            for col in columns:
-                column_info.append({
-                    "name": col[0],
-                    "type": col[1],
-                    "key": col[3],
-                    "default": col[4]
-                })
-            
             try:
-                cursor.execute(f"SELECT table_comment FROM information_schema.tables WHERE table_schema = %s AND table_name = %s", 
-                             (mysql_config['database'], table_name))
+                # 使用反引号包裹表名
+                cursor.execute(f"DESCRIBE `{table_name}`")
+                columns = cursor.fetchall()
+                
+                column_info = []
+                for col in columns:
+                    column_info.append({
+                        "name": col[0],
+                        "type": col[1],
+                        "key": col[3],
+                        "default": col[4]
+                    })
+                
+                # 使用参数化查询获取表注释
+                cursor.execute("""
+                    SELECT table_comment 
+                    FROM information_schema.tables 
+                    WHERE table_schema = %s AND table_name = %s
+                """, (mysql_config['database'], table_name))
                 table_comment_result = cursor.fetchone()
                 table_comment = table_comment_result[0] if table_comment_result else ""
                 
-                cursor.execute(f"SELECT column_name, column_comment FROM information_schema.columns WHERE table_schema = %s AND table_name = %s",
-                             (mysql_config['database'], table_name))
+                # 使用参数化查询获取列注释
+                cursor.execute("""
+                    SELECT column_name, column_comment 
+                    FROM information_schema.columns 
+                    WHERE table_schema = %s AND table_name = %s
+                """, (mysql_config['database'], table_name))
                 column_comments = {row[0]: row[1] for row in cursor.fetchall()}
                 
                 for col in column_info:
@@ -195,20 +204,20 @@ def get_database_schema():
                     "columns": column_info
                 })
             except Exception as e:
-                print(f"获取表 {table_name} 的注释信息时出错: {e}")
-                # 继续处理其他表
-                schema_info.append({
-                    "table_name": table_name,
-                    "table_comment": "",
-                    "columns": column_info
-                })
+                print(f"处理表 {table_name} 时出错: {e}")
+                continue  # 跳过出错的表，继续处理其他表
         
         cursor.close()
         conn.close()
+        
+        if not schema_info:
+            print("警告：未能获取到任何表结构信息")
+            return []
+            
         return schema_info
     except Exception as e:
         print(f"获取数据库结构时出错: {e}")
-        raise
+        return []
 
 def validate_sql(sql_query, schema_info):
     """验证SQL语句的正确性"""
@@ -506,15 +515,23 @@ def schema_graph():
 def get_schema():
     try:
         schema_info = get_database_schema()
-        if not schema_info:
+        if not isinstance(schema_info, list):
             return jsonify({
-                "error": "无法获取数据库结构，请检查数据库连接配置",
+                "error": "数据库结构信息格式错误",
                 "nodes": [],
                 "edges": []
             }), 500
+        
+        if not schema_info:
+            return jsonify({
+                "error": "未能获取到数据库结构信息，请检查数据库连接配置",
+                "nodes": [],
+                "edges": []
+            }), 500
+            
         return jsonify(schema_info)
     except Exception as e:
-        print(f"获取数据库结构时出错: {str(e)}")
+        print(f"API处理出错: {str(e)}")
         return jsonify({
             "error": f"服务器错误: {str(e)}",
             "nodes": [],
