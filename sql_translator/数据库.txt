@@ -1,0 +1,256 @@
+-- `5.18`.column_metadata definition
+
+CREATE TABLE `column_metadata` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `table_name` varchar(64) NOT NULL,
+  `column_name` varchar(64) NOT NULL,
+  `description` text,
+  `business_rules` text,
+  `data_type` varchar(50) DEFAULT NULL,
+  `is_required` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_table_column` (`table_name`,`column_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='字段描述管理';
+
+
+-- `5.18`.ods_db1_code_cls_val definition
+
+CREATE TABLE `ods_db1_code_cls_val` (
+  `code_Cls_Val_ID` bigint DEFAULT NULL COMMENT '代码分类值标识: 本实体记录的唯一标识，产生规则为流水号',
+  `code_Cls_ID` bigint DEFAULT NULL COMMENT '代码分类标识: 引用代码分类主键',
+  `code_Cls_Type` varchar(64) DEFAULT NULL COMMENT '代码分类类型: 引用代码分类的代码分类类型',
+  `code_Cls_Val` varchar(256) DEFAULT NULL COMMENT '代码分类值: 代码分类值',
+  `code_Cls_Val_Name` varchar(1024) DEFAULT NULL COMMENT '代码分类值名称: 代码分类值名称',
+  `prnt_Code_Cls_Val` varchar(1024) DEFAULT NULL COMMENT '上级代码分类值: 上级代码分类值',
+  `serial_Number` int DEFAULT NULL COMMENT '顺序号: 标准代码值的顺序号',
+  `code_Cont1` varchar(1024) DEFAULT NULL COMMENT '代码内容1: 预留字段',
+  `code_Cont2` varchar(1024) DEFAULT NULL COMMENT '代码内容2: 预留字段',
+  `code_Cont3` varchar(1024) DEFAULT NULL COMMENT '代码内容3: 预留字段',
+  `code_Cont4` varchar(1024) DEFAULT NULL COMMENT '代码内容4: 预留字段',
+  `code_Cont5` varchar(1024) DEFAULT NULL COMMENT '代码内容5: 预留字段',
+  `valid_Date` date DEFAULT NULL COMMENT '生效日期',
+  `invalid_Date` date DEFAULT NULL COMMENT '失效日期',
+  `valid_Flag` varchar(8) DEFAULT NULL COMMENT '有效标志: 包括：是、否',
+  `mgt_Org_Code` varchar(16) DEFAULT NULL COMMENT '管理单位编码'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='代码分类值 - 定义代码分类值信息，用于查询代码分类值跟踪（国网营销部 主责）';
+
+
+-- `5.18`.ods_db1_elec_cons_cust definition
+
+CREATE TABLE `ods_db1_elec_cons_cust` (
+  `elec_Cons_Cust_ID` bigint NOT NULL COMMENT '用电户标识: 唯一标识本实体记录，流水号生成',
+  `attach_ID` bigint DEFAULT NULL COMMENT '附件标识: 唯一标识',
+  `charg_Remind_Unit_No` varchar(16) DEFAULT NULL COMMENT '催费单元编号: 催费单元的外部唯一标识',
+  `bp_ID` bigint DEFAULT NULL COMMENT '伙伴标识: 引用业务伙伴的唯一标识',
+  `cust_No` varchar(16) DEFAULT NULL COMMENT '客户编号: 引用国网客户编码规则',
+  `cust_Name` varchar(256) DEFAULT NULL COMMENT '客户名称: 允许附加识别信息如"AAA(东城)"',
+  `orgn_Cust_No` varchar(16) DEFAULT NULL COMMENT '原客户编号',
+  `scy_Cap` decimal(16,6) DEFAULT NULL COMMENT '保安负荷容量: 用户保安设施对应负荷容量',
+  `cost_Ctrl_Flag` varchar(8) DEFAULT NULL COMMENT '费控标志: 是否为远程实时费控客户 (01是, 02否)',
+  `graded_Settle_Flag` varchar(8) DEFAULT NULL COMMENT '分次结算标志: 标识电费是否为分次结算 (0否, 1是)',
+  `rcvr_Supl_Mode` varchar(8) DEFAULT NULL COMMENT '复供方式: 费控客户的复电方式 (01安全复电, 02自动复电)',
+  `load_Char` varchar(8) DEFAULT NULL COMMENT '负荷性质: 负荷的重要程度分类 (一类、二类、三类)',
+  `load_Charts` varchar(8) DEFAULT NULL COMMENT '负荷特性: 一般负荷、连续性负荷等',
+  `high_ECInd_Cls` varchar(8) DEFAULT NULL COMMENT '高耗能行业分类: 钢铁、电解铝、水泥等',
+  `ctrt_Cap` decimal(16,6) DEFAULT NULL COMMENT '合同容量: 合同约定容量',
+  `chk_Cyc` varchar(8) DEFAULT NULL COMMENT '检查周期: 客户设备检查周期（默认："01每月一次"）',
+  `cust_Cls` varchar(8) DEFAULT NULL COMMENT '客户分类: 用户分类（01高压、02低压非居民、03低压居民）',
+  `transfer_Flag` varchar(8) DEFAULT NULL COMMENT '转供户标志: 是否为转供客户（无转供、转供户、被转供户）',
+  `cstm_Query_No` varchar(32) DEFAULT NULL COMMENT '自定义查询号: 存储客户熟悉的号码',
+  `holiday` varchar(32) DEFAULT NULL COMMENT '厂休日: 通过数字表示周休哪几天，类似航班日期格式（如：1.2.3 表星期一、二、三休息）',
+  `voltage` varchar(8) DEFAULT NULL COMMENT '电压等级: 如：交流6V、交流36V、交流220V',
+  `estab_Acct_Date` date DEFAULT NULL COMMENT '立户日期: 电子用户档案首次建立的日期',
+  `tmp_Expr_Date` date DEFAULT NULL COMMENT '临时到期日期: 临时用电客户的用电到期日期',
+  `tmp_Ec_Flag` varchar(8) DEFAULT NULL COMMENT '临时用能标志: 01装表临时用电，02无表临时用电，03非临时用电',
+  `main_Hshd_Flag` varchar(8) DEFAULT NULL COMMENT '主户标志: 客户是否是主户（01是、02否）',
+  `dereg_Attr_Cls` varchar(8) DEFAULT NULL COMMENT '市场化属性分类: 01市场化，02非市场化等',
+  `last_Insp_Date` date DEFAULT NULL COMMENT '上次检查日期: 上次对客户设备进行检查的日期',
+  `e_SDate` date DEFAULT NULL COMMENT '送能日期: 代表供电开始日期',
+  `prod_Shift` varchar(8) DEFAULT NULL COMMENT '生产班次: 单班、二班、三班、连续生产',
+  `stop_Supl_Mode` varchar(8) DEFAULT NULL COMMENT '停供方式: 01审批停电，02自动停电',
+  `stop_Supl_Flag` varchar(8) DEFAULT NULL COMMENT '停供标志',
+  `cncl_Date` date DEFAULT NULL COMMENT '销户日期: 销户信息归档日期',
+  `ec_Categ` varchar(8) DEFAULT NULL COMMENT '用电类别: 大工业用电，中小化肥，居民生活用电等',
+  `e_CArea` decimal(12,4) DEFAULT NULL COMMENT '用能面积: 客户的房屋面积',
+  `ec_Stf_Num` int DEFAULT NULL COMMENT '用能人数: 客户数量',
+  `run_Cap` decimal(16,6) DEFAULT NULL COMMENT '运行容量: 客户正在使用的合同容量',
+  `mgt_Org_Code` varchar(16) DEFAULT NULL COMMENT '管理单位编码',
+  `ecc_Stat` varchar(8) DEFAULT NULL COMMENT '用电户状态: 正常用电/销户/变更中等状态说明',
+  `recent_Chg_Date` date DEFAULT NULL COMMENT '最近变更日期',
+  `cust_ID` bigint DEFAULT NULL COMMENT '客户标识: 引用主客户的主键',
+  `ec_Addr` varchar(256) DEFAULT NULL COMMENT '用能地址: 客户的标准用能地址（含省市、区县城镇等）',
+  `ind_Cls` varchar(8) DEFAULT NULL COMMENT '行业分类: 用于行业分类代码（一、农林渔业；二、工业等）',
+  `impt_Lv` varchar(8) DEFAULT NULL COMMENT '重要性等级: 用于标识客户的重要性级别（特级、一级、临时性等）',
+  PRIMARY KEY (`elec_Cons_Cust_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用电户表: 用于存储用电客户基本信息（国网营销部主责）';
+
+
+-- `5.18`.ods_db1_inst_elec_cons definition
+
+CREATE TABLE `ods_db1_inst_elec_cons` (
+  `inst_ID` bigint NOT NULL COMMENT '安装点标识: 本实体记录的唯一标识，流水号生成',
+  `pipeline_ID` bigint DEFAULT NULL COMMENT '管线标识: 唯一标识',
+  `dist_Sta_ID` bigint DEFAULT NULL COMMENT '配送站标识: 唯一标识',
+  `cntrl_Sta_ID` bigint DEFAULT NULL COMMENT '枢纽站标识: 唯一标识',
+  `inst_No` varchar(16) DEFAULT NULL COMMENT '安装点编号: 用户自定义编号，默认与标识一致',
+  `billing_Unit_No` varchar(16) DEFAULT NULL COMMENT '计费单元编号: 计费单元的外部唯一标识',
+  `mr_Unit_No` varchar(16) DEFAULT NULL COMMENT '抄表单元编号: 抄表异常处理时划分的信息分组，用于人工派工',
+  `mgt_Org_Code` varchar(16) DEFAULT NULL COMMENT '管理单位编码',
+  `loc_ID` bigint DEFAULT NULL COMMENT '设备位置标识: 引用设备位置的唯一标识',
+  `inst_Cls` varchar(8) DEFAULT NULL COMMENT '安装点分类: 01消费（用电客户）、02供应（关口）',
+  `inst_Lv` int DEFAULT NULL COMMENT '安装点级数: 描述计量点在客户计费计量点间的联接层次，顶级为1，次级为2，依次类推',
+  `inst_Stat` varchar(8) DEFAULT NULL COMMENT '安装点状态: 01设立、02在用、03停用、04撤销等',
+  `inst_Mgt_Order_SN` int DEFAULT NULL COMMENT '安装点管理顺序号: 定义计量点的计量工作管理顺序',
+  `inst_Name` varchar(256) DEFAULT NULL COMMENT '安装点名称: 计量点名称',
+  `creat_Date` date DEFAULT NULL COMMENT '创建日期: 安装点申请设立的日期',
+  `fqr_Val` decimal(12,4) DEFAULT NULL COMMENT '定比定量值: 定量或定比值，与电量计算方式配合使用',
+  `fr_Ddct_Flag` varchar(8) DEFAULT NULL COMMENT '定比扣减标志: 计算差值时是否扣除此安装点抄见电量，0否、1是',
+  `srv_Kind` varchar(8) DEFAULT NULL COMMENT '服务种类: 水、电、气、热等',
+  `mr_SN` int DEFAULT NULL COMMENT '抄表顺序号: 定义计量点的抄表顺序',
+  `voltage` varchar(8) DEFAULT NULL COMMENT '承压: 电压等级代码，如交流6V、220V等',
+  `e_Calc_Mode_Code` varchar(8) DEFAULT NULL COMMENT '能源计算方式代码: 实抄、定比、定量、按日协定等',
+  `ind_Cls` varchar(8) DEFAULT NULL COMMENT '行业分类: 客户的行业分类代码',
+  `invalid_Date` date DEFAULT NULL COMMENT '失效日期: 客户安装点的失效日期',
+  `lc_Flag` varchar(8) DEFAULT NULL COMMENT '安装负控标志: 是否安装负控设备，01是、02否',
+  `can_Be_Stop_Flag` varchar(8) DEFAULT NULL COMMENT '可停供标志: 是否可停电，默认都可停电，0否、1是',
+  `dereg_Type` varchar(8) DEFAULT NULL COMMENT '市场化类型: 01非市场化、02市场化零售、03市场化直接交易',
+  `valid_Date` date DEFAULT NULL COMMENT '生效日期: 客户安装点的生效日期',
+  `vrtl_Flag` varchar(8) DEFAULT NULL COMMENT '虚拟标志: 是否虚拟安装点，01是、02否',
+  `frz_MRReason` varchar(8) DEFAULT NULL COMMENT '冻结读表原因',
+  `ba_Prd_Categ` varchar(8) DEFAULT NULL COMMENT '基本期间类别: 如上期、同期',
+  `coal_Gas_Pres_Lv` varchar(8) DEFAULT NULL COMMENT '煤气压力级别: 高压、中压、低压等',
+  `grnt_PSReason` varchar(8) DEFAULT NULL COMMENT '保证供电原因',
+  `instal_Data_Aprv_Stat` varchar(8) DEFAULT NULL COMMENT '安装数据批准状态',
+  `frame_Ctrt` varchar(32) DEFAULT NULL COMMENT '框架合同',
+  `holiday` varchar(32) DEFAULT NULL COMMENT '厂休日: 周休日表示，如1.2.3表示星期一、二、三休息',
+  `auth_Grp` varchar(32) DEFAULT NULL COMMENT '权限组',
+  `s_PExp_Exmp` varchar(8) DEFAULT NULL COMMENT '特许费免税',
+  `temp_Dist` varchar(32) DEFAULT NULL COMMENT '温度区域',
+  `s_POp_Ctrt` varchar(32) DEFAULT NULL COMMENT '特许经营合同',
+  `billing_Instal_Srv_Supplier` varchar(32) DEFAULT NULL COMMENT '计费安装服务提供商',
+  `srv_Supplier_Inv_Ctrt` varchar(32) DEFAULT NULL COMMENT '服务供应商发票合同',
+  `min_Grnt_Srv_Supplier` varchar(32) DEFAULT NULL COMMENT '保底服务提供商',
+  `grp_Type` varchar(8) DEFAULT NULL COMMENT '分组类型',
+  `sw_No` varchar(32) DEFAULT NULL COMMENT '开关编号: 计量点所属的开关编号',
+  `inst_Char` varchar(8) DEFAULT NULL COMMENT '安装点性质: 01结算、02考核等',
+  `inst_Affil_Side` varchar(8) DEFAULT NULL COMMENT '安装点所属侧: 01变电站内、02变电站外、03高压侧、04低压侧等',
+  `inst_Cap` decimal(16,6) DEFAULT NULL COMMENT '安装点容量: 客户计量点的用电容量，用于分摊损耗',
+  `inst_Usage_Cls` varchar(8) DEFAULT NULL COMMENT '安装点用途分类: 费用结算、台区关口、线路关口等',
+  `tl_Share_Flag` varchar(8) DEFAULT NULL COMMENT '变损分摊标志: 是否分摊变压器损耗，1是、0否',
+  `tl_Billing_Flag` varchar(8) DEFAULT NULL COMMENT '变损计费标志: 变损是否计费，1是、0否',
+  `meter_Mode` varchar(8) DEFAULT NULL COMMENT '计量方式: 01低供低计、02高供低计、03高供高计等',
+  `e_Md_Cls` varchar(8) DEFAULT NULL COMMENT '能量计量装置分类: Ⅰ类、Ⅱ类、Ⅲ类等计量装置分类',
+  PRIMARY KEY (`inst_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='计量点-用电: 用于存储安装点相关信息，连接房产、设备与合同（国网营销部主责）';
+
+
+-- `5.18`.ods_db1_meter_run definition
+
+CREATE TABLE `ods_db1_meter_run` (
+  `meter_Logic_ID` bigint NOT NULL COMMENT '计量表计逻辑标识: 本实体记录的唯一标识，流水号生成',
+  `meter_ID` bigint DEFAULT NULL COMMENT '表计标识: 引用电能表的主键',
+  `ref_Meter_ID` bigint DEFAULT NULL COMMENT '参考表计标识: 唯一标识',
+  `mod_No` varchar(32) DEFAULT NULL COMMENT '模块编号: 定义电能表是集抄时对应的模块编号',
+  `conc_Copy_Veri_Code` varchar(32) DEFAULT NULL COMMENT '集抄验证码: 用于集抄时的验证码',
+  `comp_Rto` bigint DEFAULT NULL COMMENT '综合倍率: 电能表综合倍率 = 电能表自身倍率 * 电流互感器倍率 * 电压互感器倍率',
+  `mgt_Org_Code` varchar(16) DEFAULT NULL COMMENT '管理单位编码',
+  `mr_Coef` decimal(10,6) DEFAULT NULL COMMENT '抄表系数: 定义电能表的抄表难度系数值',
+  `ref_Meter_Flag` varchar(8) DEFAULT NULL COMMENT '参考表标志: 是否为参考表，01是、02否',
+  `pi_Caliber` int DEFAULT NULL COMMENT '管道口径: 管道的内直径规格',
+  `chk_Cyc` int DEFAULT NULL COMMENT '检查周期: 计量表计检验周期',
+  `eqpt_Desc` varchar(256) DEFAULT NULL COMMENT '设备描述',
+  `inst_Date` date DEFAULT NULL COMMENT '安装日期: 设备的安装日期',
+  `last_Chk_Date` date DEFAULT NULL COMMENT '上次检查日期: 上次现场检验的日期',
+  `loc_ID` bigint DEFAULT NULL COMMENT '设备位置标识: 引用设备位置的主键',
+  `inst_ID` bigint DEFAULT NULL COMMENT '安装点标识: 引用安装点-用电的主键',
+  `cust_ID` bigint DEFAULT NULL COMMENT '客户标识: 引用客户的主键',
+  `dev_NO` varchar(32) DEFAULT NULL COMMENT '设备编号',
+  `dev_Type` varchar(8) DEFAULT NULL COMMENT '设备类型',
+  `share_Flag` varchar(8) DEFAULT NULL COMMENT '共用标志: 上下网共用同一块计量表计标志，默认是“否”',
+  `valid_Date` date DEFAULT NULL COMMENT '生效日期: 记录计量表计异动的生效日期',
+  `acq_Sorc` varchar(8) DEFAULT NULL COMMENT '采集来源: 01用电信息采集、02电能量采集',
+  `share_Met_Logic_ID` bigint DEFAULT NULL COMMENT '共用计量表计逻辑标识: 共享同一块计量表计的逻辑标识',
+  `invalid_Date` date DEFAULT NULL COMMENT '失效日期: 记录计量表计异动的失效日期',
+  PRIMARY KEY (`meter_Logic_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='计量表计-电能表号: 用于存储计量表计运行信息（国网营销部主责）';
+
+
+-- `5.18`.query_templates definition
+
+CREATE TABLE `query_templates` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `template_name` varchar(100) NOT NULL,
+  `description` text,
+  `natural_language_pattern` text NOT NULL,
+  `sql_template` text NOT NULL,
+  `involved_tables` text NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_template_name` (`template_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='查询模板管理';
+
+
+-- `5.18`.table_metadata definition
+
+CREATE TABLE `table_metadata` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `table_name` varchar(64) NOT NULL,
+  `description` text,
+  `business_category` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_table_name` (`table_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='表描述管理';
+
+
+-- `5.18`.table_relationships definition
+
+CREATE TABLE `table_relationships` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `source_table` varchar(64) NOT NULL,
+  `target_table` varchar(64) NOT NULL,
+  `relationship_type` enum('ONE_TO_ONE','ONE_TO_MANY','MANY_TO_ONE','MANY_TO_MANY') NOT NULL,
+  `source_columns` varchar(255) NOT NULL,
+  `target_columns` varchar(255) NOT NULL,
+  `description` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_relationship` (`source_table`,`target_table`,`source_columns`(100),`target_columns`(100))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='表关系管理';
+
+
+-- `5.18`.test1 definition
+
+CREATE TABLE `test1` (
+  `elec_Cons_Cust_ID` int NOT NULL AUTO_INCREMENT COMMENT '本实体记录的唯一标识，产生规则为流水号',
+  `bp_ID` varchar(20) DEFAULT NULL COMMENT '引用业务伙伴的唯一标识',
+  `cust_No` varchar(16) DEFAULT NULL COMMENT '客户_用电的外部标识引用国家电网公司营销管理代码类集:5110.1客户_用电编号规则',
+  `cust_Name` varchar(100) DEFAULT NULL COMMENT '客户名称是指客户的名称，但也允许附加上一些非自然的信息',
+  `orgn_Cust_No` varchar(16) DEFAULT NULL COMMENT '原客户编号',
+  `ctrt_Cap` decimal(10,2) DEFAULT NULL COMMENT '合同容量是指合同约定的本用户的容量',
+  `chk_Cyc` varchar(10) DEFAULT NULL COMMENT '检查周期是指对客户设备检查的周期（单位：月）',
+  `cust_Cls` varchar(10) DEFAULT NULL COMMENT '客户分类是指用户一种常用的分类方式',
+  `transfer_Flag` varchar(10) DEFAULT NULL COMMENT '转供户标志是指标识客户是否是转供相关客户',
+  `cstm_Query_No` varchar(32) DEFAULT NULL COMMENT '自定义查询号是指存储客户提供的自己熟悉的一串标识码',
+  `holiday` varchar(20) DEFAULT NULL COMMENT '厂休日是指周休日通过数字连续表示周休哪几天',
+  `voltage` varchar(10) DEFAULT NULL COMMENT '电压等级代码',
+  `estab_Acct_Date` date DEFAULT NULL COMMENT '立户日期是指电子用户档案的首次建立日期',
+  `tmp_Expr_Date` date DEFAULT NULL COMMENT '临时到期日期是指临时用电用户，临时用电的到期日期',
+  `tmp_Ec_Flag` varchar(10) DEFAULT NULL COMMENT '临时用能标志是指临时用电的用电客户',
+  `main_Hshd_Flag` varchar(10) DEFAULT NULL COMMENT '主户标志是指是否是主户',
+  `e_SDate` date DEFAULT NULL COMMENT '送能日期',
+  `prod_Shift` varchar(10) DEFAULT NULL COMMENT '生产班次是指用电客户的生产班次分类',
+  `stop_Supl_Mode` varchar(10) DEFAULT NULL COMMENT '费控客户确定的停电方式',
+  `stop_Supl_Flag` varchar(10) DEFAULT NULL COMMENT '停供标志',
+  `cncl_Date` date DEFAULT NULL COMMENT '销户日期是指销户业务信息归档的日期',
+  `ec_Categ` varchar(10) DEFAULT NULL COMMENT '用电类别是指用电客户的用电类别分类',
+  `e_CArea` decimal(10,2) DEFAULT NULL COMMENT '用能面积是指用能客户的房屋面积',
+  `run_Cap` decimal(10,2) DEFAULT NULL COMMENT '运行容量是指用电客户正在使用的合同容量',
+  `hndl_Time` datetime DEFAULT NULL COMMENT '办理市场化的时间',
+  PRIMARY KEY (`elec_Cons_Cust_ID`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='客户用电标识';
