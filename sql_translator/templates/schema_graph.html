@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据库关系图</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            overflow: hidden; /* 防止页面滚动 */
+        }
+        .container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .controls {
+            padding: 15px;
+            background-color: white;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            z-index: 1;
+        }
+        .controls button {
+            padding: 8px 15px;
+            border: 1px solid #2B7CE9;
+            background-color: white;
+            color: #2B7CE9;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .controls button:hover {
+            background-color: #2B7CE9;
+            color: white;
+        }
+        .controls input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        #mynetwork {
+            flex: 1;
+            background-color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .legend {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            background: white;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+        }
+        .node-info {
+            position: fixed;
+            right: 20px;
+            top: 80px;
+            background: white;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 300px;
+            display: none;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <button onclick="resetView()">重置视图</button>
+            <button onclick="togglePhysics()">切换物理引擎</button>
+            <input type="text" id="searchInput" placeholder="搜索表或字段..." oninput="searchNodes()">
+        </div>
+        <div id="mynetwork"></div>
+        <div class="legend">
+            <h3>图例说明</h3>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #97C2FC"></div>
+                <span>数据表</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #98FB98"></div>
+                <span>主键/外键</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFD700"></div>
+                <span>普通字段</span>
+            </div>
+        </div>
+        <div id="nodeInfo" class="node-info"></div>
+    </div>
+
+    <script>
+        let network = null;
+        let data = null;
+        let physicsEnabled = true;
+
+        // 获取数据并初始化图表
+        fetch('/api/schema')
+            .then(response => response.json())
+            .then(schema => {
+                const nodes = [];
+                const edges = [];
+                const tables = new Set();
+
+                // 为每个表创建节点
+                schema.forEach(table => {
+                    tables.add(table.table_name);
+                    nodes.push({
+                        id: table.table_name,
+                        label: table.table_name,
+                        title: table.table_comment || table.table_name,
+                        group: 'tables',
+                        shape: 'box',
+                        font: { size: 14, color: '#333' },
+                        margin: 10,
+                        color: { background: '#97C2FC', border: '#2B7CE9' }
+                    });
+
+                    // 为每个列创建节点
+                    table.columns.forEach(column => {
+                        const columnId = `${table.table_name}.${column.name}`;
+                        const isPrimaryOrForeign = column.key === 'PRI' || column.key === 'MUL';
+                        nodes.push({
+                            id: columnId,
+                            label: column.name,
+                            title: `${column.type}\n${column.comment || ''}`,
+                            group: isPrimaryOrForeign ? 'keys' : 'columns',
+                            shape: isPrimaryOrForeign ? 'triangle' : 'dot',
+                            size: isPrimaryOrForeign ? 15 : 10,
+                            color: {
+                                background: isPrimaryOrForeign ? '#98FB98' : '#FFD700',
+                                border: isPrimaryOrForeign ? '#228B22' : '#DAA520'
+                            }
+                        });
+
+                        // 连接表和列
+                        edges.push({
+                            from: table.table_name,
+                            to: columnId,
+                            color: { color: '#999999' },
+                            width: 1
+                        });
+
+                        // 如果是外键，添加到其他表的连接
+                        if (column.key === 'MUL') {
+                            tables.forEach(otherTable => {
+                                if (column.name.toLowerCase().includes(otherTable.toLowerCase())) {
+                                    edges.push({
+                                        from: table.table_name,
+                                        to: otherTable,
+                                        arrows: 'to',
+                                        dashes: true,
+                                        color: { color: '#2B7CE9' },
+                                        width: 2
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+
+                data = {
+                    nodes: new vis.DataSet(nodes),
+                    edges: new vis.DataSet(edges)
+                };
+
+                const options = {
+                    physics: {
+                        enabled: true,
+                        barnesHut: {
+                            gravitationalConstant: -10000,
+                            centralGravity: 0.1,
+                            springLength: 300,
+                            springConstant: 0.01,
+                            damping: 0.09
+                        },
+                        stabilization: {
+                            enabled: true,
+                            iterations: 1000,
+                            updateInterval: 25
+                        }
+                    },
+                    interaction: {
+                        hover: true,
+                        tooltipDelay: 300,
+                        zoomView: true,
+                        dragView: true,
+                        dragNodes: true,
+                        hideEdgesOnDrag: true
+                    },
+                    layout: {
+                        improvedLayout: true,
+                        randomSeed: 42,
+                        hierarchical: {
+                            enabled: false
+                        }
+                    },
+                    edges: {
+                        smooth: {
+                            enabled: false
+                        },
+                        width: 1,
+                        color: {
+                            inherit: false
+                        },
+                        shadow: false
+                    },
+                    nodes: {
+                        shadow: false,
+                        margin: {
+                            top: 15,
+                            right: 15,
+                            bottom: 15,
+                            left: 15
+                        }
+                    }
+                };
+
+                const container = document.getElementById('mynetwork');
+                network = new vis.Network(container, data, options);
+
+                // 显示节点信息
+                network.on('click', function(params) {
+                    if (params.nodes.length > 0) {
+                        const nodeId = params.nodes[0];
+                        const node = data.nodes.get(nodeId);
+                        const nodeInfo = document.getElementById('nodeInfo');
+                        nodeInfo.innerHTML = `
+                            <h3>${node.label}</h3>
+                            <p>${node.title}</p>
+                        `;
+                        nodeInfo.style.display = 'block';
+                    } else {
+                        document.getElementById('nodeInfo').style.display = 'none';
+                    }
+                });
+
+                // 初始稳定后自动适应视图
+                network.once('stabilizationIterationsDone', function() {
+                    network.fit();
+                });
+
+                // 处理窗口大小变化
+                window.addEventListener('resize', function() {
+                    network.fit();
+                });
+            });
+
+        function resetView() {
+            if (network) {
+                network.fit();
+            }
+        }
+
+        function togglePhysics() {
+            if (network) {
+                physicsEnabled = !physicsEnabled;
+                network.setOptions({ physics: { enabled: physicsEnabled } });
+            }
+        }
+
+        function searchNodes() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            if (data) {
+                const allNodes = data.nodes.get();
+                allNodes.forEach(node => {
+                    if (node.label.toLowerCase().includes(searchText)) {
+                        data.nodes.update({
+                            id: node.id,
+                            color: { 
+                                background: '#ff7f7f', 
+                                border: '#ff0000' 
+                            }
+                        });
+                    } else {
+                        const isPrimaryOrForeign = node.group === 'keys';
+                        const isTable = node.group === 'tables';
+                        data.nodes.update({
+                            id: node.id,
+                            color: isTable 
+                                ? { background: '#97C2FC', border: '#2B7CE9' }
+                                : isPrimaryOrForeign
+                                    ? { background: '#98FB98', border: '#228B22' }
+                                    : { background: '#FFD700', border: '#DAA520' }
+                        });
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html> 

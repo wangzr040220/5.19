@@ -472,5 +472,14 @@ def clear_conversation():
         session['conversation'] = conversation.to_dict()
     return jsonify({"status": "success"})
 
+@app.route('/schema-graph')
+def schema_graph():
+    return render_template('schema_graph.html')
+
+@app.route('/api/schema')
+def get_schema():
+    schema_info = get_database_schema()
+    return jsonify(schema_info)
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001) 
