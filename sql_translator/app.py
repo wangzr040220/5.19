@@ -184,6 +184,67 @@ def get_database_schema():
         print(f"获取数据库结构时出错: {e}")
         return []
 
+def validate_sql(sql_query, schema_info):
+    """验证SQL语句的正确性"""
+    try:
+        # 解析SQL中使用的表名和列名
+        sql_upper = sql_query.upper()
+        words = sql_upper.split()
+        
+        # 获取所有表名和列名的映射
+        table_columns = {
+            table['table_name'].upper(): [col['name'].upper() for col in table['columns']]
+            for table in schema_info
+        }
+        
+        # 检查FROM子句中的表名
+        if 'FROM' in words:
+            from_index = words.index('FROM')
+            table_name = words[from_index + 1].strip('();,')
+            if table_name not in table_columns:
+                return False, f"错误：表 '{table_name}' 不存在"
+        
+        # 检查JOIN子句中的表名
+        join_keywords = ['JOIN', 'INNER', 'LEFT', 'RIGHT']
+        for i, word in enumerate(words):
+            if word in join_keywords and i + 1 < len(words):
+                table_name = words[i + 1].strip('();,')
+                if table_name not in table_columns:
+                    return False, f"错误：表 '{table_name}' 不存在"
+        
+        # 检查SELECT子句中的列名
+        if 'SELECT' in words:
+            select_index = words.index('SELECT')
+            from_index = words.index('FROM')
+            columns_part = ' '.join(words[select_index + 1:from_index])
+            
+            # 处理 SELECT *
+            if '*' in columns_part:
+                return True, "验证通过"
+                
+            columns = [c.strip().split('.')[-1].strip('();,') for c in columns_part.split(',')]
+            main_table = words[from_index + 1].strip('();,')
+            
+            for col in columns:
+                # 跳过聚合函数和表达式
+                if any(func in col for func in ['COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'AS']):
+                    continue
+                    
+                # 检查列是否存在于主表中
+                if col not in table_columns.get(main_table, []) and col != '*':
+                    # 检查其他相关表
+                    col_found = False
+                    for table_cols in table_columns.values():
+                        if col in table_cols:
+                            col_found = True
+                            break
+                    if not col_found:
+                        return False, f"错误：列 '{col}' 不存在于查询相关的表中"
+        
+        return True, "验证通过"
+    except Exception as e:
+        return False, f"SQL验证出错: {str(e)}"
+
 def analyze_query_and_generate_sql(query, conversation):
     """分析用户查询并生成SQL"""
     try:
@@ -221,7 +282,8 @@ def analyze_query_and_generate_sql(query, conversation):
 注意事项：
 - 表中使用recent_Chg_Date字段作为最近更改日期
 - 表中使用ecc_Stat字段表示状态
-- 所有字段名都区分大小写，请严格按照表结构中的字段名使用"""
+- 所有字段名都区分大小写，请严格按照表结构中的字段名使用
+- 生成SQL时必须使用正确的表名和列名"""
             }
         ]
         
@@ -249,6 +311,14 @@ def analyze_query_and_generate_sql(query, conversation):
             if "```sql" in response_text:
                 sql_parts = response_text.split("```sql")
                 sql_query = sql_parts[1].split("```")[0].strip()
+                
+                # 验证SQL语句
+                if sql_query:
+                    is_valid, message = validate_sql(sql_query, conversation.schema_info)
+                    if not is_valid:
+                        # 如果验证失败，添加错误信息到响应中
+                        response_text += f"\n\n⚠️ SQL验证失败：{message}\n请检查SQL语句是否正确，或尝试重新描述您的需求。"
+                        sql_query = None
             
             return response_text, sql_query
         else:

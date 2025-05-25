@@ -182,24 +182,39 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageText = template.querySelector('.message-text');
         messageText.innerHTML = '';
         
+        const sqlSection = template.querySelector('.sql-section');
+        const confirmBtn = template.querySelector('.confirm-btn');
+        
+        if (confirmBtn) {
+            // 初始时禁用按钮
+            confirmBtn.disabled = true;
+            confirmBtn.style.opacity = '0.5';
+            confirmBtn.title = '请等待消息生成完成';
+        }
+        
         if (text) {
-            typewriterEffect(messageText, text);
+            typewriterEffect(messageText, text).then(() => {
+                // 消息生成完成后启用按钮
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.style.opacity = '1';
+                    confirmBtn.title = '执行SQL查询';
+                }
+            });
         }
 
         if (sql) {
             console.log('添加SQL部分');
-            const sqlSection = template.querySelector('.sql-section');
             const sqlCode = template.querySelector('.sql-query code');
             sqlCode.textContent = sql;
             sqlSection.style.display = 'block';
             
-            const confirmBtn = template.querySelector('.confirm-btn');
             if (confirmBtn) {
                 confirmBtn.onclick = function(event) {
+                    if (confirmBtn.disabled) return;
                     console.log('确认按钮被点击');
                     const messageElement = event.target.closest('.message-content');
                     if (messageElement) {
-                        // 点击后隐藏按钮
                         confirmBtn.style.display = 'none';
                         executeQuery(messageElement);
                     }
