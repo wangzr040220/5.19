@@ -140,12 +140,27 @@ def try_api_request(payload, max_retries=len(API_KEYS)):
 def get_database_schema():
     """获取数据库表结构信息"""
     try:
+        # 尝试从环境变量获取配置
+        mysql_config = {
+            'host': os.getenv('MYSQL_HOST', 'localhost'),
+            'user': os.getenv('MYSQL_USER', 'root'),
+            'password': os.getenv('MYSQL_PASSWORD', ''),
+            'database': os.getenv('MYSQL_DATABASE', '')
+        }
+
+        # 验证必要的配置是否存在
+        if not mysql_config['database']:
+            raise ValueError("未配置数据库名称，请在.env文件中设置MYSQL_DATABASE")
+
         conn = mysql.connector.connect(**mysql_config)
         cursor = conn.cursor()
         
         cursor.execute("SHOW TABLES")
         tables = cursor.fetchall()
         
+        if not tables:
+            return []
+            
         schema_info = []
         for table in tables:
             table_name = table[0]
@@ -161,28 +176,39 @@ def get_database_schema():
                     "default": col[4]
                 })
             
-            cursor.execute(f"SELECT table_comment FROM information_schema.tables WHERE table_schema = '{mysql_config['database']}' AND table_name = '{table_name}'")
-            table_comment_result = cursor.fetchone()
-            table_comment = table_comment_result[0] if table_comment_result else ""
-            
-            cursor.execute(f"SELECT column_name, column_comment FROM information_schema.columns WHERE table_schema = '{mysql_config['database']}' AND table_name = '{table_name}'")
-            column_comments = {row[0]: row[1] for row in cursor.fetchall()}
-            
-            for col in column_info:
-                col["comment"] = column_comments.get(col["name"], "")
-            
-            schema_info.append({
-                "table_name": table_name,
-                "table_comment": table_comment,
-                "columns": column_info
-            })
+            try:
+                cursor.execute(f"SELECT table_comment FROM information_schema.tables WHERE table_schema = %s AND table_name = %s", 
+                             (mysql_config['database'], table_name))
+                table_comment_result = cursor.fetchone()
+                table_comment = table_comment_result[0] if table_comment_result else ""
+                
+                cursor.execute(f"SELECT column_name, column_comment FROM information_schema.columns WHERE table_schema = %s AND table_name = %s",
+                             (mysql_config['database'], table_name))
+                column_comments = {row[0]: row[1] for row in cursor.fetchall()}
+                
+                for col in column_info:
+                    col["comment"] = column_comments.get(col["name"], "")
+                
+                schema_info.append({
+                    "table_name": table_name,
+                    "table_comment": table_comment,
+                    "columns": column_info
+                })
+            except Exception as e:
+                print(f"获取表 {table_name} 的注释信息时出错: {e}")
+                # 继续处理其他表
+                schema_info.append({
+                    "table_name": table_name,
+                    "table_comment": "",
+                    "columns": column_info
+                })
         
         cursor.close()
         conn.close()
         return schema_info
     except Exception as e:
         print(f"获取数据库结构时出错: {e}")
-        return []
+        raise
 
 def validate_sql(sql_query, schema_info):
     """验证SQL语句的正确性"""
@@ -478,8 +504,22 @@ def schema_graph():
 
 @app.route('/api/schema')
 def get_schema():
-    schema_info = get_database_schema()
-    return jsonify(schema_info)
+    try:
+        schema_info = get_database_schema()
+        if not schema_info:
+            return jsonify({
+                "error": "无法获取数据库结构，请检查数据库连接配置",
+                "nodes": [],
+                "edges": []
+            }), 500
+        return jsonify(schema_info)
+    except Exception as e:
+        print(f"获取数据库结构时出错: {str(e)}")
+        return jsonify({
+            "error": f"服务器错误: {str(e)}",
+            "nodes": [],
+            "edges": []
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001) 
