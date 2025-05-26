@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, jsonify, session, Response
 import mysql.connector
 from dotenv import load_dotenv
 from itertools import cycle
-from datetime import datetime
+import datetime
 from collections import deque
 
 # 加载环境变量
@@ -68,7 +68,7 @@ class Conversation:
             "role": role,
             "content": content,
             "sql": sql,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.datetime.now().isoformat()
         })
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history:]
@@ -222,23 +222,29 @@ def get_database_schema():
 def validate_sql(sql_query, schema_info):
     """验证SQL语句的正确性"""
     try:
-        # 解析SQL中使用的表名和列名
-        sql_upper = sql_query.upper()
-        
-        # 获取所有表名和列名的映射
+        # 获取所有表名和列名的映射（保持原始大小写）
         table_columns = {
-            table['table_name'].upper(): [col['name'].upper() for col in table['columns']]
+            table['table_name']: [col['name'] for col in table['columns']]
             for table in schema_info
         }
         
+        # 获取所有表名（用于不区分大小写的查找）
+        table_names_lower = {table_name.lower(): table_name for table_name in table_columns.keys()}
+        
         # 分解SQL语句为主要部分
-        parts = sql_upper.split()
+        parts = sql_query.split()
         if not parts:
             return False, "SQL语句为空"
             
-        # 查找FROM子句的位置
+        # 查找FROM子句的位置（不区分大小写）
         try:
-            from_index = parts.index('FROM')
+            from_index = -1
+            for i, part in enumerate(parts):
+                if part.upper() == 'FROM':
+                    from_index = i
+                    break
+            if from_index == -1:
+                raise ValueError()
         except ValueError:
             return False, "缺少FROM子句"
             
@@ -246,14 +252,17 @@ def validate_sql(sql_query, schema_info):
         if from_index + 1 >= len(parts):
             return False, "FROM子句后缺少表名"
             
-        table_name = parts[from_index + 1].strip('();,')
-        if table_name not in table_columns:
+        table_name = parts[from_index + 1].strip('`;,')  # 移除可能的反引号和其他标点
+        table_name_lower = table_name.lower()
+        
+        # 查找实际的表名（不区分大小写）
+        if table_name_lower not in table_names_lower:
             return False, f"错误：表 '{table_name}' 不存在"
             
-        # 解析SELECT子句
-        select_part = ' '.join(parts[1:from_index])  # 跳过SELECT关键字
+        actual_table_name = table_names_lower[table_name_lower]
         
         # 处理 SELECT *
+        select_part = ' '.join(parts[1:from_index])  # 跳过SELECT关键字
         if '*' in select_part:
             return True, "验证通过"
             
@@ -263,21 +272,22 @@ def validate_sql(sql_query, schema_info):
         for func in ['COUNT', 'SUM', 'AVG', 'MAX', 'MIN']:
             select_part = select_part.replace(f'{func}(', '').replace(')', '')
             
-        # 分割列名
-        columns = [col.strip().split('.')[-1].strip('();,') for col in select_part.split(',')]
+        # 分割列名并验证
+        columns = [col.strip().split('.')[-1].strip('`;,') for col in select_part.split(',')]
+        table_columns_lower = {col.lower(): col for col in table_columns[actual_table_name]}
         
-        # 验证每个列名
         for col in columns:
             col = col.strip()
             if not col:  # 跳过空列名
                 continue
                 
-            # 检查列是否存在于表中
-            if col not in table_columns[table_name]:
+            # 检查列是否存在（不区分大小写）
+            col_lower = col.lower()
+            if col_lower not in table_columns_lower:
                 # 检查是否是表达式或别名
-                if 'AS' in col or any(op in col for op in ['+', '-', '*', '/', '(', ')']):
+                if 'AS' in col.upper() or any(op in col for op in ['+', '-', '*', '/', '(', ')']):
                     continue
-                return False, f"错误：列 '{col}' 不存在于表 '{table_name}' 中"
+                return False, f"错误：列 '{col}' 不存在于表 '{actual_table_name}' 中"
         
         return True, "验证通过"
         
@@ -411,8 +421,37 @@ def execute_sql_query(sql_query):
         conn = mysql.connector.connect(**mysql_config)
         cursor = conn.cursor(dictionary=True)
         
-        cursor.execute(sql_query)
-        results = cursor.fetchall()
+        # 检查是否包含多个语句
+        statements = [stmt.strip() for stmt in sql_query.split(';') if stmt.strip()]
+        results = []
+        
+        for stmt in statements:
+            if not stmt:
+                continue
+                
+            try:
+                cursor.execute(stmt)
+                result = cursor.fetchall()
+                # 处理日期时间对象
+                processed_results = []
+                for row in result:
+                    processed_row = {}
+                    for key, value in row.items():
+                        # 检查是否是日期时间类型
+                        if isinstance(value, datetime.datetime):
+                            processed_row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+                        elif isinstance(value, datetime.date):
+                            processed_row[key] = value.strftime('%Y-%m-%d')
+                        else:
+                            processed_row[key] = value
+                    processed_results.append(processed_row)
+                results.extend(processed_results)
+            except Exception as e:
+                print(f"执行语句时出错: {stmt}")
+                print(f"错误信息: {str(e)}")
+                cursor.close()
+                conn.close()
+                return {"error": str(e)}
         
         cursor.close()
         conn.close()
@@ -464,6 +503,7 @@ def chat():
         
         # 保存会话状态
         session['conversation'] = conversation.to_dict()
+        session.modified = True  # 确保会话被标记为已修改
         print("会话已更新")
         
         return Response(
@@ -483,7 +523,11 @@ def chat():
         
         if isinstance(results, dict) and "error" in results:
             print("查询执行错误:", results["error"])
-            return jsonify({"error": f"执行查询时出错: {results['error']}"})
+            error_message = f"执行查询时出错: {results['error']}"
+            conversation.add_message("assistant", error_message)
+            session['conversation'] = conversation.to_dict()
+            session.modified = True
+            return jsonify({"error": error_message})
         
         print("查询结果:", results)
         # 分析查询结果
@@ -492,6 +536,7 @@ def chat():
         
         # 保存会话状态
         session['conversation'] = conversation.to_dict()
+        session.modified = True  # 确保会话被标记为已修改
         print("会话已更新，返回结果")
         
         return jsonify({

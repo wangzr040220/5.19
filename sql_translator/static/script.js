@@ -191,37 +191,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 errorMessageComponents.textDiv.innerHTML = marked.parse(`❌ ${data.error}`);
                 messageList.appendChild(errorMessageComponents.element);
                 scrollToBottom();
-                return;
-            }
+            } else {
+                // 显示查询结果
+                if (!currentGeneration?.abort) {
+                    await displayResults(data.results, resultsSection);
+                    resultsSection.style.display = 'block';
 
-            // 显示查询结果
-            if (!currentGeneration?.abort) {
-                await displayResults(data.results, resultsSection);
-                resultsSection.style.display = 'block';
-
-                // 显示分析结果
-                if (data.response) {
-                    const analysisMessageComponents = createAssistantMessage();
-                    analysisMessageComponents.textDiv.innerHTML = marked.parse(data.response);
-                    messageList.appendChild(analysisMessageComponents.element);
-                    scrollToBottom();
+                    // 显示分析结果
+                    if (data.response) {
+                        const analysisMessageComponents = createAssistantMessage();
+                        analysisMessageComponents.textDiv.innerHTML = marked.parse(data.response);
+                        messageList.appendChild(analysisMessageComponents.element);
+                        scrollToBottom();
+                    }
                 }
             }
-
         } catch (error) {
-            if (!currentGeneration?.abort) {
-                console.error('执行查询失败:', error);
-                const errorMessageComponents = createAssistantMessage();
-                errorMessageComponents.textDiv.innerHTML = marked.parse(`❌ 执行查询失败: ${error.message}`);
-                messageList.appendChild(errorMessageComponents.element);
-                scrollToBottom();
-            }
+            console.error('执行查询时出错:', error);
+            const errorMessageComponents = createAssistantMessage();
+            errorMessageComponents.textDiv.innerHTML = marked.parse(`❌ 执行查询时发生错误: ${error.message}`);
+            messageList.appendChild(errorMessageComponents.element);
+            scrollToBottom();
         } finally {
-            currentGeneration = null;
             isProcessing = false;
             setButtonLoading(sendBtn, false);
             sendBtn.onclick = sendMessage;
-            userInput.focus();
+            userInput.disabled = false;
         }
     }
 
